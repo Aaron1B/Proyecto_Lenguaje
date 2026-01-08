@@ -36,20 +36,9 @@ public class MiniLexer {
         String entrada = scanner.nextLine();
         scanner.close();
 
-        entrada = entrada.replace(";", " ; ")
-                         .replace("(", " ( ")
-                         .replace(")", " ) ")
-                         .replace("+", " + ")
-                         .replace("-", " - ")
-                         .replace("*", " * ")
-                         .replace("/", " / ")
-                         .replace("=", " = ");
-        
-        while (entrada.contains("  ")) {
-            entrada = entrada.replace("  ", " ");
-        }
+        entrada = entrada.replaceAll("([;()+-*/=])", " $1 ").replaceAll("\\s+", " ").trim();
 
-        String[] lexemas = entrada.trim().split(" ");
+        String[] lexemas = entrada.split("\\s+");
         List<Token> tokensList = new ArrayList<>();
 
         for (String lexema : lexemas) {
