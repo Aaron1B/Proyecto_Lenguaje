@@ -9,7 +9,8 @@ public class MiniLexer {
         IDENTIFICADOR,
         LITERAL_NUMERICO,
         OPERADOR,
-        DELIMITADOR
+        DELIMITADOR,
+        FIN
     }
 
     public static class Token {
@@ -21,149 +22,151 @@ public class MiniLexer {
             this.lexema = lexema;
         }
 
-        @Override
         public String toString() {
             return "Token: <" + tipo + ", \"" + lexema + "\">";
         }
     }
 
+    private static int currentTokenIndex = 0;
+    private static Token[] tokens;
+
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
-        System.out.println("Introduce las instrucciones (separadas por espacios):");
+        System.out.println("Introduce las instrucciones:");
         String entrada = scanner.nextLine();
         scanner.close();
 
-        String[] tokens = entrada.split(" ");
+        entrada = entrada.replace(";", " ; ")
+                         .replace("(", " ( ")
+                         .replace(")", " ) ")
+                         .replace("+", " + ")
+                         .replace("-", " - ")
+                         .replace("*", " * ")
+                         .replace("/", " / ")
+                         .replace("=", " = ");
+        
+        while (entrada.contains("  ")) {
+            entrada = entrada.replace("  ", " ");
+        }
+
+        String[] lexemas = entrada.trim().split(" ");
         List<Token> tokensList = new ArrayList<>();
 
-        for (String lexema : tokens) {
+        for (String lexema : lexemas) {
             if (lexema.isEmpty()) continue;
-            
             TipoToken tipo = clasificarToken(lexema);
-            Token token = new Token(tipo, lexema);
-            tokensList.add(token);
-            
-            System.out.println(token);
+            tokensList.add(new Token(tipo, lexema));
         }
 
         Token[] tokensClasificados = tokensList.toArray(new Token[0]);
+        for(Token t : tokensClasificados) {
+            System.out.println(t);
+        }
+        
         parse(tokensClasificados);
     }
 
-    private static int currentTokenIndex = 0;
-    private static Token[] tokens;
+    public static TipoToken clasificarToken(String lexema) {
+        if (lexema.equals("print")) {
+            return TipoToken.PALABRA_CLAVE;
+        } else if (lexema.equals("(") || lexema.equals(")") || lexema.equals(";")) {
+            return TipoToken.DELIMITADOR;
+        } else if (lexema.matches("[+\\-*/=]")) {
+            return TipoToken.OPERADOR;
+        } else if (lexema.matches("[0-9]+")) {
+            return TipoToken.LITERAL_NUMERICO;
+        } else {
+            return TipoToken.IDENTIFICADOR;
+        }
+    }
 
     private static void parse(Token[] tokenArray) {
         tokens = tokenArray;
         currentTokenIndex = 0;
         try {
-            parseStmtList();
-            if (currentTokenIndex < tokens.length) {
-                String found = tokens[currentTokenIndex].lexema;
-                throw new RuntimeException("Token inesperado '" + found + "' en la posición " + currentTokenIndex + ", se esperaba fin de entrada");
+            while (currentTokenIndex < tokens.length) {
+                parseStmt();
             }
-            System.out.println("Análisis sintáctico exitoso");
+            System.out.println("La cadena es VALIDA sintácticamente.");
         } catch (Exception e) {
-            System.out.println("Error de sintaxis: " + e.getMessage());
-        }
-    }
-
-    private static void parseStmtList() {
-        while (currentTokenIndex < tokens.length && (match(TipoToken.IDENTIFICADOR) || match(TipoToken.PALABRA_CLAVE, "print") || match(TipoToken.PALABRA_CLAVE, "int"))) {
-            parseStmt();
+            System.out.println("ERROR SINTÁCTICO: " + e.getMessage());
         }
     }
 
     private static void parseStmt() {
-        if (match(TipoToken.IDENTIFICADOR)) {
-            expect(TipoToken.IDENTIFICADOR);
-            expect(TipoToken.OPERADOR, "=");
+        Token tokenActual = lookahead();
+
+        if (tokenActual.tipo == TipoToken.IDENTIFICADOR) {
+            match(TipoToken.IDENTIFICADOR);
+            match(TipoToken.OPERADOR, "=");
             parseExpr();
-            expect(TipoToken.DELIMITADOR, ";");
-        } else if (match(TipoToken.PALABRA_CLAVE, "print")) {
-            expect(TipoToken.PALABRA_CLAVE, "print");
-            expect(TipoToken.DELIMITADOR, "(");
+            match(TipoToken.DELIMITADOR, ";");
+            
+        } else if (tokenActual.tipo == TipoToken.PALABRA_CLAVE && tokenActual.lexema.equals("print")) {
+            match(TipoToken.PALABRA_CLAVE, "print");
+            match(TipoToken.DELIMITADOR, "(");
             parseExpr();
-            expect(TipoToken.DELIMITADOR, ")");
-            expect(TipoToken.DELIMITADOR, ";");
-        } else if (match(TipoToken.PALABRA_CLAVE, "int")) {
-            expect(TipoToken.PALABRA_CLAVE, "int");
-            expect(TipoToken.IDENTIFICADOR);
-            expect(TipoToken.OPERADOR, "=");
-            parseExpr();
-            expect(TipoToken.DELIMITADOR, ";");
+            match(TipoToken.DELIMITADOR, ")");
+            match(TipoToken.DELIMITADOR, ";");
+            
         } else {
-            String found = currentTokenIndex < tokens.length ? tokens[currentTokenIndex].lexema : "fin de entrada";
-            throw new RuntimeException("Se esperaba ID, 'print' o 'int' pero se encontró '" + found + "' en la posición " + currentTokenIndex);
+            throw new RuntimeException("Se esperaba un Identificador o 'print', pero se encontró: " + tokenActual.lexema);
         }
     }
 
     private static void parseExpr() {
         parseTerm();
-        while (match(TipoToken.OPERADOR, "+") || match(TipoToken.OPERADOR, "-")) {
-            expect(tokens[currentTokenIndex].tipo, tokens[currentTokenIndex].lexema);
+        while (lookahead().lexema.equals("+") || lookahead().lexema.equals("-")) {
+            match(TipoToken.OPERADOR);
             parseTerm();
         }
     }
 
     private static void parseTerm() {
         parseFactor();
-        while (match(TipoToken.OPERADOR, "*") || match(TipoToken.OPERADOR, "/")) {
-            expect(tokens[currentTokenIndex].tipo, tokens[currentTokenIndex].lexema);
+        while (lookahead().lexema.equals("*") || lookahead().lexema.equals("/")) {
+            match(TipoToken.OPERADOR);
             parseFactor();
         }
     }
 
     private static void parseFactor() {
-        if (match(TipoToken.IDENTIFICADOR)) {
-            expect(TipoToken.IDENTIFICADOR);
-        } else if (match(TipoToken.LITERAL_NUMERICO)) {
-            expect(TipoToken.LITERAL_NUMERICO);
-        } else if (match(TipoToken.DELIMITADOR, "(")) {
-            expect(TipoToken.DELIMITADOR, "(");
+        Token token = lookahead();
+        if (token.tipo == TipoToken.IDENTIFICADOR) {
+            match(TipoToken.IDENTIFICADOR);
+        } else if (token.tipo == TipoToken.LITERAL_NUMERICO) {
+            match(TipoToken.LITERAL_NUMERICO);
+        } else if (token.lexema.equals("(")) {
+            match(TipoToken.DELIMITADOR, "(");
             parseExpr();
-            expect(TipoToken.DELIMITADOR, ")");
+            match(TipoToken.DELIMITADOR, ")");
         } else {
-            String found = currentTokenIndex < tokens.length ? tokens[currentTokenIndex].lexema : "fin de entrada";
-            throw new RuntimeException("Se esperaba ID, NUM o '(' pero se encontró '" + found + "' en la posición " + currentTokenIndex);
+            throw new RuntimeException("Se esperaba ID, NUM o '(', pero se encontró: " + token.lexema);
         }
     }
 
-    private static boolean match(TipoToken tipo) {
-        return currentTokenIndex < tokens.length && tokens[currentTokenIndex].tipo == tipo;
-    }
-
-    private static boolean match(TipoToken tipo, String lexema) {
-        return currentTokenIndex < tokens.length && tokens[currentTokenIndex].tipo == tipo && tokens[currentTokenIndex].lexema.equals(lexema);
-    }
-
-    private static void expect(TipoToken tipo) {
-        if (!match(tipo)) {
-            String found = currentTokenIndex < tokens.length ? tokens[currentTokenIndex].lexema : "fin de entrada";
-            throw new RuntimeException("Se esperaba " + tipo + " pero se encontró '" + found + "' en la posición " + currentTokenIndex);
+    private static Token lookahead() {
+        if (currentTokenIndex < tokens.length) {
+            return tokens[currentTokenIndex];
         }
-        currentTokenIndex++;
+        return new Token(TipoToken.FIN, "");
     }
 
-    private static void expect(TipoToken tipo, String lexema) {
-        if (!match(tipo, lexema)) {
-            String found = currentTokenIndex < tokens.length ? tokens[currentTokenIndex].lexema : "fin de entrada";
-            throw new RuntimeException("Se esperaba '" + lexema + "' pero se encontró '" + found + "' en la posición " + currentTokenIndex);
-        }
-        currentTokenIndex++;
-    }
-
-    public static TipoToken clasificarToken(String lexema) {
-        if (lexema.equals("if") || lexema.equals("int") || lexema.equals("print")) {
-            return TipoToken.PALABRA_CLAVE;
-        } else if (lexema.equals("(") || lexema.equals(")") || lexema.equals(";")) {
-            return TipoToken.DELIMITADOR;
-        } else if (lexema.equals("+") || lexema.equals("=") || lexema.equals("==") || lexema.equals("-") || lexema.equals("*") || lexema.equals("/")) {
-            return TipoToken.OPERADOR;
-        } else if (lexema.matches("[0-9]+")) {
-            return TipoToken.LITERAL_NUMERICO;
+    private static void match(TipoToken tipoEsperado) {
+        Token t = lookahead();
+        if (t.tipo == tipoEsperado) {
+            currentTokenIndex++;
         } else {
-            return TipoToken.IDENTIFICADOR;
+            throw new RuntimeException("Se esperaba " + tipoEsperado + " pero se encontró " + t.tipo);
+        }
+    }
+
+    private static void match(TipoToken tipoEsperado, String lexemaEsperado) {
+        Token t = lookahead();
+        if (t.tipo == tipoEsperado && t.lexema.equals(lexemaEsperado)) {
+            currentTokenIndex++;
+        } else {
+            throw new RuntimeException("Se esperaba '" + lexemaEsperado + "' pero se encontró '" + t.lexema + "'");
         }
     }
 }
