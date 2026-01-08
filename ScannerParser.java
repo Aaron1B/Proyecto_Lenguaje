@@ -2,7 +2,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
-public class MiniLexer {
+public class ScannerParser {
 
     public enum TipoToken {
         PALABRA_CLAVE,
